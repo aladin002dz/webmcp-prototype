@@ -1,0 +1,189 @@
+:root {
+  --fond: #f4f5f7;
+  --surface: #ffffff;
+  --texte: #1d2330;
+  --doux: #6b7385;
+  --bord: #e2e5eb;
+  --accent: #5b5bd6;
+  --a-faire: #e8590c;
+  --en-cours: #1c7ed6;
+  --termine: #2f9e44;
+  --erreur: #e03131;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 20px;
+  color: var(--texte);
+  background: var(--fond);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; }
+button, input { font: inherit; }
+
+/* ---------- En-tête ---------- */
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 1rem 1.5rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--bord);
+}
+h1 { margin: 0 auto 0 0; font-size: 1.6rem; }
+h1 span { color: var(--accent); }
+
+#formulaire { display: flex; gap: 0.5rem; }
+#formulaire input {
+  width: 16rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--bord);
+  border-radius: 8px;
+}
+button {
+  padding: 0.45rem 0.9rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+}
+button.discret { background: transparent; color: var(--doux); border: 1px solid var(--bord); }
+button:disabled { opacity: 0.3; cursor: default; }
+
+/* Interrupteur WebMCP */
+.interrupteur {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  background: #fbe9e9;
+  color: var(--erreur);
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+.interrupteur input { width: 1.2rem; height: 1.2rem; accent-color: var(--termine); cursor: pointer; }
+.webmcp-actif .interrupteur { background: #e6f6ea; color: var(--termine); }
+
+#banniere {
+  margin: 1rem 1.5rem 0;
+  padding: 1rem 1.25rem;
+  border-radius: 10px;
+  background: #fff4e6;
+  border: 2px solid var(--a-faire);
+  line-height: 1.5;
+}
+
+/* ---------- Mise en page ---------- */
+
+main {
+  display: grid;
+  grid-template-columns: 1fr 26rem;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  main { grid-template-columns: 1fr; }
+}
+
+/* ---------- Tableau ---------- */
+
+#tableau { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+@media (max-width: 700px) {
+  #tableau { grid-template-columns: 1fr; }
+}
+
+.colonne {
+  background: #eceef2;
+  border-radius: 12px;
+  padding: 0.75rem;
+  min-height: 60vh;
+  border-top: 5px solid var(--couleur);
+}
+.a_faire { --couleur: var(--a-faire); }
+.en_cours { --couleur: var(--en-cours); }
+.termine { --couleur: var(--termine); }
+
+.colonne h2 { display: flex; justify-content: space-between; margin: 0.25rem 0.25rem 0.75rem; font-size: 1.15rem; }
+.compteur { color: var(--doux); font-weight: 400; }
+
+.carte {
+  position: relative;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--surface);
+  border-radius: 10px;
+  border-left: 4px solid var(--couleur);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
+}
+.carte p { margin: 0.2rem 0 0.5rem; line-height: 1.35; }
+.carte .id { font-size: 0.75rem; color: var(--doux); font-family: ui-monospace, Consolas, monospace; }
+.carte { cursor: grab; }
+.carte .supprimer {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  padding: 0 0.5rem;
+  background: transparent;
+  color: var(--doux);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.carte:hover .supprimer { opacity: 1; }
+.carte .supprimer:hover { color: var(--erreur); background: #fdf1f1; }
+
+/* Glisser-déposer */
+.carte.en-deplacement { opacity: 0.4; }
+.colonne { transition: background 0.15s, outline-color 0.15s; outline: 3px dashed transparent; outline-offset: -3px; }
+.colonne.survolee { background: #e3e4fa; outline-color: var(--accent); }
+
+/* Surbrillance quand l'agent touche une carte (1,5 s) */
+.surbrillance { animation: lueur 1.5s ease-out; }
+.suppression { animation: lueur-rouge 1.5s ease-out forwards; }
+
+@keyframes lueur {
+  0%, 40% { box-shadow: 0 0 0 4px var(--accent), 0 0 24px 6px rgb(91 91 214 / 0.55); transform: scale(1.03); }
+  100% { box-shadow: 0 1px 3px rgb(0 0 0 / 0.08); transform: scale(1); }
+}
+@keyframes lueur-rouge {
+  0%, 40% { box-shadow: 0 0 0 4px var(--erreur), 0 0 24px 6px rgb(224 49 49 / 0.5); }
+  100% { opacity: 0.2; transform: scale(0.95); }
+}
+
+/* ---------- Journal de l'agent ---------- */
+
+aside {
+  background: var(--surface);
+  border: 1px solid var(--bord);
+  border-radius: 12px;
+  padding: 1rem;
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+}
+aside h2 { display: flex; justify-content: space-between; align-items: center; margin: 0 0 0.75rem; font-size: 1.15rem; }
+aside h2 button { font-size: 0.8rem; padding: 0.2rem 0.6rem; }
+
+#journal { list-style: none; margin: 0; padding: 0; }
+#journal:empty::before { content: "Aucun appel pour l'instant."; color: var(--doux); font-size: 0.9rem; }
+#journal li {
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.6rem;
+  border-left: 4px solid var(--accent);
+  background: #f7f7fd;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  animation: apparition 0.3s ease-out;
+}
+#journal li.erreur { border-color: var(--erreur); background: #fdf1f1; }
+#journal time { color: var(--doux); font-family: ui-monospace, Consolas, monospace; }
+#journal strong { font-family: ui-monospace, Consolas, monospace; }
+.bloc { margin-top: 0.4rem; }
+.bloc span { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--doux); }
+.bloc pre { margin: 0.15rem 0 0; white-space: pre-wrap; word-break: break-word; font-size: 0.78rem; }
+
+@keyframes apparition { from { opacity: 0; transform: translateY(-6px); } }

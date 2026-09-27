@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kanban WebMCP</title>
+  </head>
+  <body>
+    <header>
+      <h1>Kanban <span>WebMCP</span></h1>
+      <form id="formulaire">
+        <input id="nouveau-titre" placeholder="Nouvelle tâche…" autocomplete="off" />
+        <button>Ajouter</button>
+      </form>
+      <button id="reinitialiser" class="discret">Réinitialiser</button>
+      <label class="interrupteur">
+        <input type="checkbox" id="toggle-webmcp" />
+        <span id="etat-webmcp">WebMCP : désactivé</span>
+      </label>
+    </header>
+
+    <div id="banniere" hidden></div>
+
+    <main>
+      <section id="tableau"></section>
+      <aside>
+        <h2>Journal de l'agent <button id="vider-journal" class="discret">Vider</button></h2>
+        <ol id="journal"></ol>
+      </aside>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+    <!-- Pont vers Claude Desktop / Claude Code (via @mcp-b/webmcp-local-relay) -->
+    <!-- Version figée ; data-etat permet à webmcp.ts d'attendre la fin du chargement -->
+    <script
+      id="relais-webmcp"
+      src="https://cdn.jsdelivr.net/npm/@mcp-b/webmcp-local-relay@5.1.0/dist/browser/embed.js"
+      onload="this.dataset.etat = 'charge'"
+      onerror="this.dataset.etat = 'erreur'"
+    ></script>
+  </body>
+</html>
