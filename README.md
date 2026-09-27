@@ -3,12 +3,14 @@
 Un petit tableau Kanban (« À faire », « En cours », « Terminé ») qui expose des **outils WebMCP** :
 un agent IA peut lister, ajouter, déplacer et supprimer des tâches directement dans la page.
 
-- `src/webmcp.ts` : **tout** le code WebMCP (moins de 80 lignes)
+- `src/webmcp.ts` : **tout** le code WebMCP (définition, enregistrement, retrait et test des outils)
+- `src/modelcontext.d.ts` : les types TypeScript de l'API WebMCP
 - `src/store.ts` : les tâches (sauvegardées dans `localStorage`)
 - `src/main.ts` : l'interface (tableau, journal de l'agent, interrupteur)
 
-> WebMCP est **expérimental** et l'API change encore. Ce projet utilise `document.modelContext`
-> (l'ancien nom `navigator.modelContext` est obsolète depuis Chrome 150).
+> WebMCP est **expérimental** et l'API change encore. Ce projet utilise `document.modelContext`,
+> avec un repli sur `navigator.modelContext` (ancien nom, obsolète depuis Chrome 150, encore utilisé
+> par certains polyfills). Le fonctionnement détaillé est expliqué en [section 6](#6-fonctionnement-technique).
 
 ---
 
@@ -73,9 +75,7 @@ Le relais écoute uniquement sur `127.0.0.1:9333`.
 L'extension officielle de Chrome liste les outils de la page et permet de les appeler à la main,
 ou via Gemini. C'est pratique pour vérifier que les outils sont bien enregistrés.
 
-## 4. Script de démo
-
-**Avant de tourner :** cliquez sur **Réinitialiser** pour retrouver les 5 tâches d'exemple.
+## 4. Tester en pratique
 
 **Étape 1 : sans outils.** Mettez l'interrupteur sur **« WebMCP : désactivé »** et demandez à l'agent :
 
@@ -119,3 +119,123 @@ suppression) et s'affiche dans le **Journal de l'agent** avec l'heure, les argum
 | `supprimer_tache` | `id`                                                  | `{ supprimee }`             |
 
 En cas de problème, l'outil renvoie `{ erreur: "message" }`.
+
+## 6. Fonctionnement technique
+
+### Vue d'ensemble
+
+```
+ Agent (Codex, Claude, Gemini…)
+        │  découvre et appelle les outils
+        ▼
+ Chrome ── document.modelContext ──► registerTool / getTools / executeTool
+        ▲                                     │
+        │ enregistre les 4 outils             │ appelle execute(args)
+        │                                     ▼
+ src/webmcp.ts ──────────────────────► src/store.ts (localStorage)
+        │ surAppel(outil, args, résultat)
+        ▼
+ src/main.ts (journal + surbrillance des cartes)
+```
+
+WebMCP permet à une page web de déclarer des **outils** (nom, description, schéma JSON des
+paramètres, fonction `execute`) directement auprès du navigateur. Un agent qui pilote le navigateur
+lit cette liste et appelle les outils, au lieu de cliquer dans l'interface ou de lire le DOM.
+Tout se passe **dans la page** : aucun serveur MCP à écrire, les outils utilisent le même code
+(`store.ts`) que l'interface.
+
+### L'API utilisée
+
+| Méthode (sur `document.modelContext`)          | Rôle                                                  | Utilisée par         |
+| ---------------------------------------------- | ----------------------------------------------------- | -------------------- |
+| `registerTool(outil, { signal })`              | Déclare un outil ; `signal.abort()` le retire         | la page (`webmcp.ts`) |
+| `getTools()`                                   | Liste les outils enregistrés                          | l'agent, le relais, `__webmcpTest` |
+| `executeTool(outil, argsJson)`                 | Appelle un outil avec ses arguments en JSON           | l'agent, le relais, `__webmcpTest` |
+| évènement `toolchange`                         | Signale que la liste d'outils a changé                | l'agent, le relais   |
+
+`getModelContext()` renvoie `document.modelContext ?? navigator.modelContext ?? null` : l'API
+native de Chrome d'abord, puis l'ancien emplacement (anciennes versions, polyfill `@mcp-b`).
+Les types minimaux sont dans `src/modelcontext.d.ts`, car TypeScript ne les connaît pas encore.
+
+### Définition d'un outil
+
+Chaque outil de `webmcp.ts` associe une description pour l'agent et une `action` qui appelle le store :
+
+```ts
+{
+  name: "deplacer_tache",
+  description: "Déplace une tâche (par son id) vers une autre colonne.",
+  inputSchema: { type: "object", properties: { id, colonne }, required: ["id", "colonne"] },
+  action: (a) => ({ tache: deplacer(a.id, a.colonne) }),
+}
+```
+
+- **`inputSchema`** est un schéma JSON : l'agent s'en sert pour construire les arguments
+  (l'`enum` de `colonne` lui donne les seules valeurs valides).
+- **`annotations: { readOnlyHint: true }`** (sur `lister_taches`) indique que l'outil ne modifie
+  rien : l'agent peut l'appeler sans demander de confirmation.
+- Au moment de l'enregistrement, `action` est enveloppée dans une fonction `execute` qui :
+  1. exécute l'action ;
+  2. transforme toute exception en `{ erreur: "message" }` (l'agent reçoit un message lisible,
+     pas une erreur technique) et l'écrit dans la console (`[WebMCP] Échec de l'appel…`) ;
+  3. prévient l'interface (`surAppel`) pour le journal et la surbrillance ;
+  4. renvoie le résultat **sérialisé en JSON** (chaîne), format attendu par `executeTool`.
+
+### Cycle de vie de l'enregistrement
+
+1. **Démarrage** (`main.ts`) : la page attend d'abord le chargement du script du relais
+   (`attendreRelais()`, 5 s au plus, grâce à l'attribut `data-etat` posé par `onload`/`onerror`
+   dans `index.html`), puis vérifie que WebMCP existe.
+   - Si oui, et si l'interrupteur n'a pas été coupé lors de la visite précédente (`localStorage`),
+     elle appelle `activer()`.
+   - Sinon, l'interrupteur est grisé, le badge affiche « WebMCP : désactivé », le journal affiche
+     « WebMCP non disponible » et un bandeau explique comment activer le flag.
+2. **`activer()`** : retire d'abord les outils éventuellement déjà présents, crée **un seul**
+   `AbortController` pour les 4 outils, puis les enregistre un par un. Si un enregistrement échoue,
+   tout est retiré et l'erreur (nom de l'outil + message) est affichée en rouge dans le journal.
+3. **`desactiver()`** (interrupteur coupé) : `abort()` sur le contrôleur retire les 4 outils d'un
+   coup. Pour les polyfills qui ne gèrent pas `signal`, `unregisterTool(nom)` est aussi appelé.
+4. **Jamais d'outils en double** : le contrôleur est stocké sur `window.__webmcpControleur` (et non
+   dans une variable du module), et `import.meta.hot.dispose(desactiver)` retire les outils quand
+   Vite recharge le module. Même après un rechargement à chaud ou plusieurs clics rapides sur
+   l'interrupteur, `getTools()` renvoie toujours exactement 4 outils.
+
+### Comment les agents trouvent les outils
+
+- **Codex (extension Chrome)** : se connecte à l'onglet via le protocole DevTools, active le domaine
+  `WebMCP` (évènements `toolsAdded` / `toolsRemoved`), puis appelle `document.modelContext.getTools()`
+  et `executeTool()` dans un monde JavaScript isolé. Seules les pages sécurisées (`https://`) ou
+  `http://localhost` sont acceptées : c'est le cas ici.
+- **Claude Desktop / Claude Code** : le script `embed.js` de `@mcp-b/webmcp-local-relay`
+  (version figée à `5.1.0` dans `index.html`) lit lui aussi `getTools()`, surveille `toolchange`
+  (et interroge toutes les 2 s en secours), et transmet la liste via une iframe cachée au relais
+  local `127.0.0.1:9333`. Il **ne remplace pas** `document.modelContext`, il ne fait que le lire.
+- **Extension « Model Context Tool Inspector »** : lit la même API.
+
+### Tester depuis la console (développement uniquement)
+
+```js
+await window.__webmcpTest()
+// [WebMCP test] getTools() : ["ajouter_tache","deplacer_tache","lister_taches","supprimer_tache"]
+// [WebMCP test] executeTool(lister_taches) : { taches: [...] }
+```
+
+Cette fonction n'existe qu'avec `npm run dev` (`import.meta.env.DEV`) : elle n'est pas incluse
+dans le build de production.
+
+### Diagnostic
+
+Tous les messages techniques sont préfixés par `[WebMCP]` dans la console :
+
+| Message                                        | Signification                                              |
+| ---------------------------------------------- | ---------------------------------------------------------- |
+| `4 outils enregistrés.`                        | Tout va bien                                               |
+| `WebMCP non disponible…`                       | Flag Chrome non activé ou navigateur non compatible        |
+| `Échec de l'enregistrement de « … »`           | `registerTool` a refusé l'outil (schéma, nom en double…)    |
+| `Échec de l'appel de « … »`                    | L'outil a levé une erreur (id inconnu, colonne invalide…)   |
+| `Le relais ne s'est pas chargé en 5 s…`        | jsDelivr injoignable : les outils restent disponibles pour Codex, pas pour Claude Desktop |
+
+> **Codex affiche « Unable to load browser request-header policy » ?** Cette erreur ne vient pas de
+> la page : avant chaque commande navigateur, Codex télécharge sa configuration depuis
+> `ab.chatgpt.com` et abandonne après 10 s. Un antivirus qui analyse le HTTPS (Avast, par exemple)
+> peut la ralentir : ajoutez `ab.chatgpt.com` aux exceptions, puis redémarrez Codex.
